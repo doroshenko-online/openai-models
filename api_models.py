@@ -6,4 +6,9 @@ class ResponseMessage(BaseModel):
 
 
 class ResponseMessageGetModels(BaseModel):
-    response: dict
+    models: list[dict]
+
+
+class ResponseUpdateModel(BaseModel):
+    status: str = 'success'
+    message: str

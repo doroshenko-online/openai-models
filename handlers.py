@@ -4,7 +4,7 @@ from databases import Database
 from sqlalchemy import create_engine
 
 from api import fetch_openai_models
-from api_models import ResponseMessage, ResponseMessageGetModels
+from api_models import ResponseMessage, ResponseMessageGetModels, ResponseUpdateModel
 from models import OpenAIModel
 from sqlalchemy.orm import sessionmaker
 
@@ -44,31 +44,52 @@ async def get_models(database: Database) -> ResponseMessageGetModels:
     if not database.is_connected:
         await database.connect()
 
-    response = {}
+    response = []
 
     query = OpenAIModel.__table__.select()
     result = await database.fetch_all(query)
-    print(result)
     for res in result:
-        response[res['name']] = res['price']
+        response.append({
+            'id': res['id'],
+            'name': res['name'],
+            'price': res['price']
+        })
 
-    return ResponseMessageGetModels(response=response)
+    return ResponseMessageGetModels(models=response)
 
 
-async def update_model(database: Database, model_id: int, name: str = None, price: float = None):
+async def update_model(database: Database, model_id: int, price: float = None):
+    if not database.is_connected:
+        await database.connect()
+
     columns_to_update = {}
+    try:
+        model_id = int(model_id)
+    except (TypeError, ValueError):
+        return ResponseUpdateModel(
+            status="error",
+            message="Invalid model id"
+        )
 
-    if name is not None:
-        columns_to_update["name"] = name
     if price is not None:
-        columns_to_update["price"] = price
+        try:
+            columns_to_update["price"] = float(price)
+        except (TypeError, ValueError):
+            return ResponseUpdateModel(
+                status="error",
+                message="Invalid price. Price must be integer"
+            )
 
-    query = OpenAIModel.__table__.update().where(OpenAIModel.id == model_id).values(**columns_to_update)
-    result = await database.execute(query)
+    if not columns_to_update:
+        return ResponseUpdateModel(
+            status="error",
+            message="No fields to update"
+        )
 
-    if result:
-        logger.info(f"Model {model_id} has been updated.")
-        return {"status": "success", "message": "Model has been updated."}
-    else:
-        logger.error(f"Failed to update model {model_id}.")
-        return {"status": "error", "message": "Failed to update model."}
+    query = OpenAIModel.__table__.update().where(OpenAIModel.id == int(model_id)).values(**columns_to_update)
+    try:
+        await database.execute(query)
+    except Exception as e:
+        logging.warning(e)
+        return ResponseUpdateModel(message=f"Failed to update model with id {model_id}")
+    return ResponseUpdateModel(message="Model has been updated.")
